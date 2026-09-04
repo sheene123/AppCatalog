@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    name: Build, format, tests, audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer le SDK .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restaurer les dépendances
+        run: dotnet restore
+
+      # Le format est un contrat : la CI refuse tout code non conforme au .editorconfig.
+      - name: Vérifier le formatage
+        run: dotnet format --verify-no-changes
+
+      - name: Compiler (Release)
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Lancer les tests
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      # Barrière de sécurité : échoue si une dépendance a une vulnérabilité connue.
+      - name: Auditer les dépendances vulnérables
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee audit.log
+          ! grep -q "has the following vulnerable packages" audit.log
+
+  docker:
+    name: Build image Docker
+    runs-on: ubuntu-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construire l'image
+        run: docker build -t appcatalog:ci .

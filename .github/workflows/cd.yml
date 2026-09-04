@@ -1,0 +1,67 @@
+name: CD
+
+# Se déclenche après un CI réussi sur main, ou manuellement.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Authentification à Azure par OIDC : aucun secret/mot de passe stocké.
+# GitHub émet un jeton signé, Azure le vérifie via la « federated credential ».
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build ACR + déploiement AKS
+    runs-on: ubuntu-latest
+    # Ne déploie que si le CI a réellement réussi (pas sur un déclenchement manuel raté).
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connexion à Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Build de l'image directement dans ACR (pas besoin de Docker sur le runner).
+      # Deux tags : le SHA du commit (traçabilité) et latest.
+      - name: Build & push image dans ACR
+        run: |
+          az acr build \
+            --registry "${{ vars.ACR_NAME }}" \
+            --image "appcatalog:${{ github.sha }}" \
+            --image "appcatalog:latest" \
+            .
+
+      - name: Configurer kubectl sur AKS
+        run: |
+          az aks get-credentials \
+            --resource-group "${{ vars.AKS_RESOURCE_GROUP }}" \
+            --name "${{ vars.AKS_CLUSTER_NAME }}" \
+            --admin --overwrite-existing
+
+      - name: Déployer sur AKS
+        run: |
+          kubectl apply -k k8s/
+          # Injecte l'image ACR + le tag du commit, puis attend la fin du rollout.
+          kubectl set image deployment/appcatalog \
+            api="${{ vars.ACR_LOGIN_SERVER }}/appcatalog:${{ github.sha }}" \
+            -n appcatalog
+          kubectl rollout status deployment/appcatalog -n appcatalog --timeout=180s
+
+      - name: Afficher l'URL publique
+        run: |
+          echo "Service :"
+          kubectl get service appcatalog -n appcatalog \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+          echo ""

@@ -1,0 +1,28 @@
+# Build .NET
+bin/
+obj/
+*.user
+
+# Base SQLite locale (générée au démarrage, jamais versionnée)
+*.db
+*.db-shm
+*.db-wal
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Terraform (on committe .terraform.lock.hcl, mais jamais l'état ni les secrets)
+infra/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# Kubeconfig éventuel
+kubeconfig
+
+# Divers
+audit.log

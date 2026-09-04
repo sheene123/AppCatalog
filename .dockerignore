@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+**/*.db
+**/*.db-*
+.git/
+.github/
+.vs/
+.vscode/
+*.md

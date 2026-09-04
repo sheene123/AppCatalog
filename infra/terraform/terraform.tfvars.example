@@ -1,0 +1,7 @@
+# Copier en terraform.tfvars et renseigner. Ne pas committer terraform.tfvars.
+# L'ID d'abonnement peut aussi être exporté : export ARM_SUBSCRIPTION_ID="..."
+
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+# location        = "francecentral"
+# node_count      = 1
+# node_size       = "Standard_B2s"

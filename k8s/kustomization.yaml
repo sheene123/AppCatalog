@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: appcatalog
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+
+# L'image réelle est injectée par la CD :
+#   kustomize edit set image appcatalog=<acr>.azurecr.io/appcatalog:<sha>
+images:
+  - name: appcatalog
+    newTag: latest
