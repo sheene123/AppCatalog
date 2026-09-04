@@ -18,10 +18,13 @@ jobs:
   deploy:
     name: Build ACR + déploiement AKS
     runs-on: ubuntu-latest
-    # Ne déploie que si le CI a réellement réussi (pas sur un déclenchement manuel raté).
+    # Ne déploie que si le CI a réussi ET si l'auth Azure est configurée
+    # (variable AZURE_CLIENT_ID présente). Sans ça, le job est ignoré proprement
+    # plutôt que d'échouer — utile tant que le bootstrap OIDC n'est pas fait.
     if: >-
-      ${{ github.event_name == 'workflow_dispatch' ||
-          github.event.workflow_run.conclusion == 'success' }}
+      ${{ (github.event_name == 'workflow_dispatch' ||
+           github.event.workflow_run.conclusion == 'success')
+          && vars.AZURE_CLIENT_ID != '' }}
 
     steps:
       - uses: actions/checkout@v4
