@@ -83,8 +83,12 @@ app.UseStatusCodePages();
 
 app.UseRateLimiter();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+// Swagger uniquement en développement : on n'expose pas le contrat de l'API en prod.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.MapControllers();
 app.MapHealthChecks("/health");

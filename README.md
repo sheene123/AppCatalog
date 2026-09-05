@@ -6,10 +6,9 @@ est un nœud (nom, propriétaire, stack, criticité, dernier déploiement), et l
 questions qu'un stockage tabulaire fait mal, comme « quelles applications sont
 impactées si celle-ci tombe ? » (parcours transitif du graphe).
 
-Construit en **développement assisté par IA** sur une stack .NET / cloud. L'intérêt du
-projet n'est pas le CRUD mais la **méthode d'industrialisation** : tests comme contrat,
-CI comme barrière, IaC, sécurité par défaut. Voir [`JOURNAL.md`](JOURNAL.md) et
-[`.github/copilot-instructions.md`](.github/copilot-instructions.md).
+Stack .NET / cloud, pensée autour d'une **méthode d'industrialisation** : les tests
+comme contrat, la CI comme barrière, l'infrastructure décrite en code et la sécurité
+par défaut.
 
 ## Architecture
 
@@ -187,12 +186,11 @@ AppCatalog/
 ├── k8s/                      # Neo4j, API, Web, NetworkPolicies, SecretProviderClass, HPA
 ├── scripts/bootstrap-azure-oidc.sh
 ├── Dockerfile / Dockerfile.web
-├── .github/workflows/        # ci.yml, cd.yml
-├── .github/copilot-instructions.md
-└── JOURNAL.md
+└── .github/workflows/        # ci.yml, cd.yml
 ```
 
 ## Périmètre
 
-Pas d'authentification applicative (hors périmètre volontaire). La discipline de
-périmètre est un choix assumé ; les extensions envisagées sont dans [`JOURNAL.md`](JOURNAL.md).
+Authentification réduite à la protection des écritures (lecture publique). Le reste
+du périmètre est volontairement resserré autour de la démonstration : un référentiel
+graphe, sa cartographie et la chaîne de déploiement complète.
