@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using AppCatalog.Api.Data;
 using AppCatalog.Api.Health;
 using Neo4j.Driver;
@@ -9,6 +10,29 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Limitation de débit : protège l'API contre les abus / pics de charge.
+// Fenêtre fixe par IP, paramétrable (RateLimiting:PermitLimit / :WindowSeconds).
+// Au-delà du quota -> 429 Too Many Requests. /health est exempté (sondes k8s).
+var permitLimit = builder.Configuration.GetValue<int?>("RateLimiting:PermitLimit") ?? 100;
+var windowSeconds = builder.Configuration.GetValue<int?>("RateLimiting:WindowSeconds") ?? 10;
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/health"))
+            return RateLimitPartition.GetNoLimiter("health");
+
+        var clientKey = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(clientKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permitLimit,
+            Window = TimeSpan.FromSeconds(windowSeconds),
+            QueueLimit = 0
+        });
+    });
+});
 
 // Le driver Neo4j est thread-safe : un seul pour toute l'application (singleton).
 // On lit les paramètres via le ServiceProvider (config finale) plutôt qu'au moment
@@ -43,6 +67,8 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
+app.UseRateLimiter();
 
 app.UseSwagger();
 app.UseSwaggerUI();
