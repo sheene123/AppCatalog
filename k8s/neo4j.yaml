@@ -29,6 +29,10 @@ spec:
       labels:
         app: neo4j
     spec:
+      # Empêche Kubernetes d'injecter les variables NEO4J_*_SERVICE_* / NEO4J_PORT_*
+      # des Services : Neo4j les lit comme des réglages de config et plante (validation
+      # stricte). Correctif clé pour un Service nommé « neo4j ».
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 7474      # utilisateur « neo4j » de l'image officielle
@@ -43,15 +47,16 @@ spec:
             - name: bolt
               containerPort: 7687
           env:
-            # Mot de passe injecté depuis le secret (synchronisé depuis Azure Key Vault).
-            - name: NEO4J_PASSWORD
+            # Variable intermédiaire NON préfixée NEO4J_ (sinon Neo4j la lirait comme
+            # un réglage de config). Mot de passe injecté depuis le secret Key Vault.
+            - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: neo4j-auth
                   key: password
             # Neo4j attend NEO4J_AUTH = user/password : on compose par expansion $(VAR).
             - name: NEO4J_AUTH
-              value: "neo4j/$(NEO4J_PASSWORD)"
+              value: "neo4j/$(DB_PASSWORD)"
             - name: NEO4J_server_memory_heap_max__size
               value: "512m"
           securityContext:
