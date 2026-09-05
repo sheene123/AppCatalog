@@ -81,6 +81,17 @@ public class ApplicationsController : ControllerBase
 
     // --- Partie graphe : dépendances entre applications ---
 
+    /// <summary>Le graphe complet (nœuds + dépendances), pour la cartographie.</summary>
+    [HttpGet("graph")]
+    [ProducesResponseType(typeof(GraphResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<GraphResponse>> GetGraph(CancellationToken ct)
+    {
+        var (nodes, edges) = await _repo.GetGraphAsync(ct);
+        return Ok(new GraphResponse(
+            nodes.Select(a => a.ToResponse()),
+            edges.Select(e => new GraphEdge(e.From, e.To))));
+    }
+
     /// <summary>Déclare que l'application {id} dépend d'une autre (TargetId).</summary>
     [HttpPost("{id}/dependencies")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

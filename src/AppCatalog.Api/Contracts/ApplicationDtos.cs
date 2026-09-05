@@ -59,6 +59,12 @@ public record AddDependencyRequest
     public string TargetId { get; init; } = string.Empty;
 }
 
+/// <summary>Une relation de dépendance du graphe (From dépend de To).</summary>
+public record GraphEdge(string From, string To);
+
+/// <summary>Le graphe complet : nœuds (applications) et arêtes (dépendances).</summary>
+public record GraphResponse(IEnumerable<ApplicationResponse> Nodes, IEnumerable<GraphEdge> Edges);
+
 public static class ApplicationMapping
 {
     public static ApplicationResponse ToResponse(this Application a) => new(

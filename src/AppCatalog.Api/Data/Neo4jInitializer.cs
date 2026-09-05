@@ -57,28 +57,67 @@ public class Neo4jInitializer : IHostedService
     private async Task SeedAsync(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
+        var apps = new Dictionary<string, Application>();
 
-        Application New(string name, string owner, string stack, Criticality crit, DateTimeOffset? deployed) => new()
+        async Task<string> Add(string name, string owner, string stack, Criticality crit, int daysAgo)
         {
-            Name = name,
-            Owner = owner,
-            Stack = stack,
-            Criticality = crit,
-            LastDeployedAt = deployed,
-            CreatedAt = now,
-            UpdatedAt = now
+            var app = await _repo.CreateAsync(new Application
+            {
+                Name = name,
+                Owner = owner,
+                Stack = stack,
+                Criticality = crit,
+                LastDeployedAt = now.AddDays(-daysAgo),
+                CreatedAt = now,
+                UpdatedAt = now
+            }, ct);
+            apps[name] = app;
+            return app.Id;
+        }
+
+        // Canaux (applications exposées aux usagers)
+        await Add("Portail Voyageurs", "Équipe Digital", "Next.js, React", Criticality.High, 3);
+        await Add("Application Mobile", "Équipe Mobile", "Kotlin, Swift", Criticality.High, 6);
+        await Add("Bornes d'enregistrement", "Équipe Self-Service", "C#, WPF", Criticality.Vital, 12);
+        await Add("Affichage des vols (FIDS)", "Équipe Exploitation", "Angular, Node.js", Criticality.Vital, 2);
+        await Add("Back-office Agents", "Équipe Exploitation", "ASP.NET Core, Blazor", Criticality.Medium, 9);
+
+        // Services applicatifs
+        await Add("API Gateway", "Équipe Plateforme", "Kong, Node.js", Criticality.Vital, 5);
+        await Add("Service Authentification", "Équipe Sécurité", "Keycloak, OAuth2", Criticality.Vital, 20);
+        await Add("Service Réservation", "Équipe Réservation", "Java, Spring Boot", Criticality.High, 7);
+        await Add("Service Paiement", "Équipe Finance", "ASP.NET Core", Criticality.Vital, 4);
+        await Add("Service Bagages", "Équipe Bagages", "Go", Criticality.High, 15);
+        await Add("Service Notifications", "Équipe Digital", "Python, FastAPI", Criticality.Low, 22);
+
+        // Données et systèmes externes
+        await Add("Référentiel des vols", "Équipe Données", "PostgreSQL", Criticality.Vital, 30);
+        await Add("Base Passagers", "Équipe Données", "Oracle", Criticality.Vital, 45);
+        await Add("Passerelle Bancaire", "Équipe Finance", "Partenaire externe", Criticality.Vital, 60);
+
+        // Dépendances : (source) dépend de (cible).
+        var links = new (string From, string To)[]
+        {
+            ("Portail Voyageurs", "API Gateway"),
+            ("Portail Voyageurs", "Service Authentification"),
+            ("Application Mobile", "API Gateway"),
+            ("Application Mobile", "Service Authentification"),
+            ("Bornes d'enregistrement", "API Gateway"),
+            ("Bornes d'enregistrement", "Service Bagages"),
+            ("Affichage des vols (FIDS)", "Référentiel des vols"),
+            ("Back-office Agents", "API Gateway"),
+            ("API Gateway", "Service Réservation"),
+            ("API Gateway", "Service Paiement"),
+            ("API Gateway", "Service Bagages"),
+            ("API Gateway", "Service Notifications"),
+            ("Service Réservation", "Référentiel des vols"),
+            ("Service Réservation", "Base Passagers"),
+            ("Service Paiement", "Passerelle Bancaire"),
+            ("Service Paiement", "Base Passagers"),
+            ("Service Bagages", "Référentiel des vols"),
+            ("Service Authentification", "Base Passagers"),
         };
-
-        var rh = await _repo.CreateAsync(New("Portail RH", "Équipe SIRH", "ASP.NET Core", Criticality.High,
-            new DateTimeOffset(2026, 8, 20, 9, 30, 0, TimeSpan.Zero)), ct);
-        var fournisseurs = await _repo.CreateAsync(New("Référentiel Fournisseurs", "Équipe Achats", "ASP.NET Core, PostgreSQL", Criticality.Medium,
-            new DateTimeOffset(2026, 7, 3, 14, 0, 0, TimeSpan.Zero)), ct);
-        var paiement = await _repo.CreateAsync(New("Passerelle Paiement", "Équipe Finance", "ASP.NET Core, Redis", Criticality.Vital,
-            new DateTimeOffset(2026, 8, 28, 6, 15, 0, TimeSpan.Zero)), ct);
-
-        // Portail RH et Référentiel Fournisseurs dépendent de la Passerelle Paiement.
-        // -> l'« impact » de la Passerelle Paiement = ces deux applications.
-        await _repo.AddDependencyAsync(rh.Id, paiement.Id, ct);
-        await _repo.AddDependencyAsync(fournisseurs.Id, paiement.Id, ct);
+        foreach (var (from, to) in links)
+            await _repo.AddDependencyAsync(apps[from].Id, apps[to].Id, ct);
     }
 }

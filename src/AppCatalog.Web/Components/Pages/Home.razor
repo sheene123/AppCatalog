@@ -2,12 +2,31 @@
 
 <PageTitle>AppCatalog</PageTitle>
 
-<h1>AppCatalog</h1>
+<div class="hero">
+    <h1>AppCatalog</h1>
+    <p class="lead">La cartographie vivante de votre système d'information. Recensez vos
+       applications, leurs propriétaires et leurs dépendances, et mesurez en un clic
+       l'impact d'une panne sur le reste du SI.</p>
+    <div class="hero-actions">
+        <a class="btn btn-primary btn-lg" href="catalogue">Ouvrir le catalogue</a>
+        <a class="btn btn-outline-secondary btn-lg" href="cartographie">Voir la cartographie</a>
+    </div>
+</div>
 
-<p>
-    Interface web (Blazor) du référentiel d'applications du SI. Elle consomme
-    l'API AppCatalog, jointe via son service Kubernetes interne
-    (<code>http://appcatalog-api</code>) — l'API n'est pas exposée publiquement.
-</p>
-
-<a class="btn btn-primary" href="applications">Voir les applications →</a>
+<div class="feature-grid">
+    <div class="feature">
+        <h3>Référentiel centralisé</h3>
+        <p>Toutes les applications au même endroit : propriétaire, pile technique,
+           criticité, dernière mise en production.</p>
+    </div>
+    <div class="feature">
+        <h3>Graphe de dépendances</h3>
+        <p>Visualisez qui dépend de quoi. Les dépendances sont modélisées comme un
+           véritable graphe, pas un simple tableau.</p>
+    </div>
+    <div class="feature">
+        <h3>Analyse d'impact</h3>
+        <p>« Si ce service tombe, qu'est-ce qui casse ? » La réponse en un clic, y
+           compris les effets en cascade.</p>
+    </div>
+</div>

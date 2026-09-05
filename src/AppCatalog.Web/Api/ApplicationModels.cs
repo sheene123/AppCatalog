@@ -22,6 +22,10 @@ public record ApplicationModel(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
+public record GraphEdge(string From, string To);
+
+public record GraphData(List<ApplicationModel> Nodes, List<GraphEdge> Edges);
+
 // Formulaire de création (lié au champ du même nom côté API).
 public class CreateApplicationInput
 {

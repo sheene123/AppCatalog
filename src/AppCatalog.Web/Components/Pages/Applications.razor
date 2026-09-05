@@ -1,87 +1,105 @@
-@page "/applications"
+@page "/catalogue"
 @rendermode InteractiveServer
 @using AppCatalog.Web.Api
 @inject ApplicationsClient Api
 
-<PageTitle>Applications</PageTitle>
+<PageTitle>Catalogue applicatif</PageTitle>
 
-<h1>Référentiel des applications</h1>
-<p class="text-muted">Données servies par l'API AppCatalog via son service Kubernetes interne.</p>
+<div class="page-head">
+    <h1>Catalogue applicatif</h1>
+    <p>Le référentiel des applications du système d'information : propriétaire, pile
+       technique, criticité et dernière mise en production.</p>
+</div>
 
 @if (_error is not null)
 {
-    <div class="alert alert-danger">
-        Impossible de joindre l'API : @_error
-    </div>
+    <div class="alert alert-danger">Impossible de joindre l'API : @_error</div>
 }
-
-<div class="card mb-4">
-    <div class="card-header">Ajouter une application</div>
-    <div class="card-body">
-        <EditForm Model="_input" OnValidSubmit="AddAsync" FormName="add-app">
-            <div class="row g-2">
-                <div class="col-md-3">
-                    <input class="form-control" placeholder="Nom" @bind="_input.Name" />
-                </div>
-                <div class="col-md-3">
-                    <input class="form-control" placeholder="Propriétaire" @bind="_input.Owner" />
-                </div>
-                <div class="col-md-3">
-                    <input class="form-control" placeholder="Stack" @bind="_input.Stack" />
-                </div>
-                <div class="col-md-2">
-                    <select class="form-select" @bind="_input.Criticality">
-                        @foreach (var c in Enum.GetValues<Criticality>())
-                        {
-                            <option value="@c">@c</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-1">
-                    <button class="btn btn-primary w-100" type="submit">+</button>
-                </div>
-            </div>
-        </EditForm>
-    </div>
-</div>
 
 @if (_apps is null)
 {
-    <p><em>Chargement…</em></p>
+    <p><em>Chargement du catalogue…</em></p>
 }
 else
 {
-    <table class="table table-striped">
+    <div class="kpi-row">
+        <div class="kpi"><span class="kpi-num">@_apps.Count</span><span class="kpi-lbl">applications</span></div>
+        <div class="kpi"><span class="kpi-num vital">@Count(Criticality.Vital)</span><span class="kpi-lbl">vitales</span></div>
+        <div class="kpi"><span class="kpi-num high">@Count(Criticality.High)</span><span class="kpi-lbl">criticité élevée</span></div>
+        <div class="kpi"><span class="kpi-num">@_apps.Count(a => a.LastDeployedAt >= DateTimeOffset.UtcNow.AddDays(-14))</span><span class="kpi-lbl">déployées &lt; 14 j</span></div>
+    </div>
+
+    <div class="toolbar">
+        <input class="form-control search" placeholder="Rechercher une application ou un propriétaire…"
+               @bind="_search" @bind:event="oninput" />
+        <div class="filters">
+            <button class="chip @(_filter is null ? "on" : "")" @onclick="() => _filter = null">Toutes</button>
+            @foreach (var c in new[] { Criticality.Vital, Criticality.High, Criticality.Medium, Criticality.Low })
+            {
+                <button class="chip crit-@c.ToString().ToLower() @(_filter == c ? "on" : "")"
+                        @onclick="() => _filter = c">@CritLabel(c)</button>
+            }
+        </div>
+        <button class="btn btn-primary add-btn" @onclick="() => _showAdd = !_showAdd">
+            @(_showAdd ? "Annuler" : "+ Nouvelle application")
+        </button>
+    </div>
+
+    @if (_showAdd)
+    {
+        <div class="add-card">
+            <EditForm Model="_input" OnValidSubmit="AddAsync" FormName="add-app">
+                <div class="add-grid">
+                    <input class="form-control" placeholder="Nom" @bind="_input.Name" />
+                    <input class="form-control" placeholder="Propriétaire" @bind="_input.Owner" />
+                    <input class="form-control" placeholder="Pile technique" @bind="_input.Stack" />
+                    <select class="form-select" @bind="_input.Criticality">
+                        @foreach (var c in Enum.GetValues<Criticality>())
+                        {
+                            <option value="@c">@CritLabel(c)</option>
+                        }
+                    </select>
+                    <button class="btn btn-primary" type="submit">Ajouter</button>
+                </div>
+            </EditForm>
+        </div>
+    }
+
+    <table class="table app-table">
         <thead>
             <tr>
-                <th>#</th><th>Nom</th><th>Propriétaire</th><th>Stack</th>
+                <th>Application</th><th>Propriétaire</th><th>Pile technique</th>
                 <th>Criticité</th><th>Dernier déploiement</th><th></th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var a in _apps)
+            @foreach (var a in Filtered())
             {
                 <tr>
-                    <td>@a.Id</td>
-                    <td>@a.Name</td>
+                    <td class="name-cell">@a.Name</td>
                     <td>@a.Owner</td>
-                    <td>@a.Stack</td>
-                    <td><span class="badge @Badge(a.Criticality)">@a.Criticality</span></td>
-                    <td>@(a.LastDeployedAt?.ToString("dd/MM/yyyy") ?? "—")</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-danger"
-                                @onclick="() => DeleteAsync(a.Id)">Supprimer</button>
+                    <td class="muted">@a.Stack</td>
+                    <td><span class="badge crit-@a.Criticality.ToString().ToLower()">@CritLabel(a.Criticality)</span></td>
+                    <td class="muted">@(a.LastDeployedAt?.ToString("dd/MM/yyyy") ?? "jamais")</td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(a.Id)">Supprimer</button>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
-    <p class="text-muted">@_apps.Count application(s).</p>
+    @if (!Filtered().Any())
+    {
+        <p class="muted">Aucune application ne correspond à la recherche.</p>
+    }
 }
 
 @code {
     private IReadOnlyList<ApplicationModel>? _apps;
     private CreateApplicationInput _input = new();
+    private string _search = "";
+    private Criticality? _filter;
+    private bool _showAdd;
     private string? _error;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
@@ -100,20 +118,33 @@ else
         }
     }
 
+    private IEnumerable<ApplicationModel> Filtered()
+    {
+        if (_apps is null) return Array.Empty<ApplicationModel>();
+        IEnumerable<ApplicationModel> q = _apps;
+        if (_filter is not null) q = q.Where(a => a.Criticality == _filter);
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(a => a.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                          || a.Owner.Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+        return q.OrderByDescending(a => a.Criticality).ThenBy(a => a.Name);
+    }
+
+    private int Count(Criticality c) => _apps?.Count(a => a.Criticality == c) ?? 0;
+
     private async Task AddAsync()
     {
-        if (string.IsNullOrWhiteSpace(_input.Name) || string.IsNullOrWhiteSpace(_input.Owner))
-            return;
+        if (string.IsNullOrWhiteSpace(_input.Name) || string.IsNullOrWhiteSpace(_input.Owner)) return;
         try
         {
             await Api.CreateAsync(_input);
             _input = new();
+            _showAdd = false;
             await LoadAsync();
         }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
+        catch (Exception ex) { _error = ex.Message; }
     }
 
     private async Task DeleteAsync(string id)
@@ -123,17 +154,14 @@ else
             await Api.DeleteAsync(id);
             await LoadAsync();
         }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
+        catch (Exception ex) { _error = ex.Message; }
     }
 
-    private static string Badge(Criticality c) => c switch
+    private static string CritLabel(Criticality c) => c switch
     {
-        Criticality.Vital => "bg-danger",
-        Criticality.High => "bg-warning text-dark",
-        Criticality.Medium => "bg-secondary",
-        _ => "bg-light text-dark"
+        Criticality.Vital => "Vital",
+        Criticality.High => "Élevée",
+        Criticality.Medium => "Moyenne",
+        _ => "Faible"
     };
 }

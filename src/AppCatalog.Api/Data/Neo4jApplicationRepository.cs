@@ -135,6 +135,25 @@ public class Neo4jApplicationRepository : IApplicationRepository
         });
     }
 
+    public async Task<(IReadOnlyList<Application> Nodes, IReadOnlyList<(string From, string To)> Edges)> GetGraphAsync(
+        CancellationToken ct = default)
+    {
+        await using var session = _driver.AsyncSession();
+        return await session.ExecuteReadAsync(async tx =>
+        {
+            var nodeCursor = await tx.RunAsync($"MATCH (a:Application) RETURN {Fields} ORDER BY a.name");
+            var nodes = (await nodeCursor.ToListAsync()).Select(Map).ToList();
+
+            var edgeCursor = await tx.RunAsync(
+                "MATCH (a:Application)-[:DEPENDS_ON]->(b:Application) RETURN a.id AS from, b.id AS to");
+            var edges = (await edgeCursor.ToListAsync())
+                .Select(r => (r["from"].As<string>(), r["to"].As<string>()))
+                .ToList();
+
+            return ((IReadOnlyList<Application>)nodes, (IReadOnlyList<(string, string)>)edges);
+        });
+    }
+
     private static object ToParams(Application a) => new
     {
         id = a.Id,

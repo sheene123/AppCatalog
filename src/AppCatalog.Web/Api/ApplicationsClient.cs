@@ -35,6 +35,27 @@ public class ApplicationsClient
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Applications dont {id} dépend (voisins sortants directs).</summary>
+    public async Task<IReadOnlyList<ApplicationModel>> GetDependenciesAsync(string id, CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<List<ApplicationModel>>($"api/applications/{id}/dependencies", Json, ct) ?? [];
+
+    /// <summary>Applications impactées si {id} tombe (qui en dépendent, transitivement).</summary>
+    public async Task<IReadOnlyList<ApplicationModel>> GetImpactAsync(string id, CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<List<ApplicationModel>>($"api/applications/{id}/impact", Json, ct) ?? [];
+
+    /// <summary>Déclare que {fromId} dépend de {toId}.</summary>
+    public async Task AddDependencyAsync(string fromId, string toId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync(
+            $"api/applications/{fromId}/dependencies", new { targetId = toId }, Json, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>Le graphe complet (nœuds + dépendances) pour la cartographie.</summary>
+    public async Task<GraphData> GetGraphAsync(CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<GraphData>("api/applications/graph", Json, ct)
+           ?? new GraphData([], []);
+
     private static JsonSerializerOptions CreateJson()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);

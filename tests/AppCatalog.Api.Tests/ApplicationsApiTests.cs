@@ -48,8 +48,8 @@ public class ApplicationsApiTests : IClassFixture<AppCatalogFactory>
     {
         var apps = await _client.GetFromJsonAsync<List<ApplicationResponse>>("/api/applications", Json);
         Assert.NotNull(apps);
-        Assert.True(apps!.Count >= 3);
-        Assert.Contains(apps, a => a.Name == "Passerelle Paiement");
+        Assert.True(apps!.Count >= 10);
+        Assert.Contains(apps, a => a.Name == "API Gateway");
     }
 
     [Fact]

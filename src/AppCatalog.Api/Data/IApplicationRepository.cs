@@ -20,4 +20,8 @@ public interface IApplicationRepository
 
     /// <summary>Applications impactées si celle-ci tombe (qui dépendent d'elle, transitivement).</summary>
     Task<IReadOnlyList<Application>> GetImpactAsync(string id, CancellationToken ct = default);
+
+    /// <summary>Le graphe complet : tous les nœuds et toutes les relations DEPENDS_ON.</summary>
+    Task<(IReadOnlyList<Application> Nodes, IReadOnlyList<(string From, string To)> Edges)> GetGraphAsync(
+        CancellationToken ct = default);
 }

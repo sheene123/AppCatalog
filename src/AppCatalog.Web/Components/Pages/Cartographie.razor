@@ -1,0 +1,235 @@
+@page "/cartographie"
+@rendermode InteractiveServer
+@using AppCatalog.Web.Api
+@inject ApplicationsClient Api
+
+<PageTitle>Cartographie du SI</PageTitle>
+
+<div class="page-head">
+    <h1>Cartographie du système d'information</h1>
+    <p>Chaque application est un nœud, chaque flèche une dépendance. Cliquez sur une
+       application pour voir de quoi elle dépend et ce qu'elle impacterait en cas de panne.</p>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">Impossible de charger le graphe : @_error</div>
+}
+else if (_graph is null)
+{
+    <p><em>Chargement de la cartographie…</em></p>
+}
+else
+{
+    <div class="carto-layout">
+        <div class="carto-graph">
+            <div class="legend">
+                <span><i class="dot vital"></i> Vital</span>
+                <span><i class="dot high"></i> Élevée</span>
+                <span><i class="dot medium"></i> Moyenne</span>
+                <span><i class="dot low"></i> Faible</span>
+                <span class="legend-sep">Clic sur une appli pour l'analyser</span>
+            </div>
+            <svg viewBox="0 0 1000 640" class="graph-svg" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="3"
+                            orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L8,3 L0,6 Z" class="arrow-head" />
+                    </marker>
+                </defs>
+
+                @foreach (var e in _graph.Edges)
+                {
+                    if (_pos.TryGetValue(e.From, out var p1) && _pos.TryGetValue(e.To, out var p2))
+                    {
+                        var cls = EdgeClass(e);
+                        <line x1="@F(p1.x)" y1="@F(p1.y + NodeH / 2)"
+                              x2="@F(p2.x)" y2="@F(p2.y - NodeH / 2 - 2)"
+                              class="edge @cls" marker-end="url(#arrow)" />
+                    }
+                }
+
+                @foreach (var n in _graph.Nodes)
+                {
+                    var p = _pos[n.Id];
+                    var cls = NodeClass(n.Id);
+                    <g class="node @cls" transform="translate(@F(p.x - NodeW / 2),@F(p.y - NodeH / 2))"
+                       @onclick="() => SelectAsync(n.Id)">
+                        <rect width="@NodeW" height="@NodeH" rx="7" class="node-box crit-@n.Criticality.ToString().ToLower()" />
+                        <text x="@(NodeW / 2)" y="@(NodeH / 2 + 4)" text-anchor="middle" class="node-label">
+                            @Truncate(n.Name, 20)
+                        </text>
+                    </g>
+                }
+            </svg>
+        </div>
+
+        <aside class="carto-panel">
+            @if (_selected is null)
+            {
+                <div class="panel-empty">
+                    <strong>@_graph.Nodes.Count applications</strong>
+                    <span>@_graph.Edges.Count dépendances</span>
+                    <p class="muted">Sélectionnez une application dans le graphe pour afficher son analyse d'impact.</p>
+                </div>
+            }
+            else
+            {
+                <h2>@_selected.Name</h2>
+                <div class="panel-meta">
+                    <span class="badge crit-@_selected.Criticality.ToString().ToLower()">@CritLabel(_selected.Criticality)</span>
+                    <span class="muted">@_selected.Owner</span>
+                </div>
+                <p class="muted stack">@_selected.Stack</p>
+
+                <h3>Dépend de (@_directDeps.Count)</h3>
+                @if (_directDeps.Count == 0)
+                {
+                    <p class="muted">Aucune dépendance (brique de base).</p>
+                }
+                else
+                {
+                    <ul class="dep-list">
+                        @foreach (var d in _directDeps)
+                        {
+                            <li><i class="dot @CritDot(d.Criticality)"></i>@d.Name</li>
+                        }
+                    </ul>
+                }
+
+                <h3 class="impact-title">Impact si panne (@_impact.Count)</h3>
+                @if (_impact.Count == 0)
+                {
+                    <p class="muted">Aucune application ne dépend de celle-ci.</p>
+                }
+                else
+                {
+                    <p class="muted">Ces applications seraient affectées, directement ou en cascade :</p>
+                    <ul class="dep-list">
+                        @foreach (var d in _impact.OrderByDescending(x => x.Criticality))
+                        {
+                            <li><i class="dot @CritDot(d.Criticality)"></i>@d.Name</li>
+                        }
+                    </ul>
+                }
+                <button class="btn btn-sm btn-outline-secondary mt-3" @onclick="Clear">Fermer</button>
+            }
+        </aside>
+    </div>
+}
+
+@code {
+    private const double NodeW = 150;
+    private const double NodeH = 42;
+
+    private GraphData? _graph;
+    private readonly Dictionary<string, (double x, double y)> _pos = new();
+    private string? _error;
+
+    private ApplicationModel? _selected;
+    private List<ApplicationModel> _directDeps = new();
+    private List<ApplicationModel> _impact = new();
+    private HashSet<string> _highlightNodes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _graph = await Api.GetGraphAsync();
+            ComputeLayout();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    // Layout en couches : niveau = plus longue chaîne de dépendances issue du nœud.
+    // Les briques de base (niveau 0) en bas, les applications de façade en haut.
+    private void ComputeLayout()
+    {
+        if (_graph is null) return;
+        var outgoing = _graph.Nodes.ToDictionary(
+            n => n.Id,
+            n => _graph.Edges.Where(e => e.From == n.Id).Select(e => e.To).ToList());
+
+        var level = new Dictionary<string, int>();
+        int Level(string id, HashSet<string> stack)
+        {
+            if (level.TryGetValue(id, out var v)) return v;
+            if (!stack.Add(id)) return 0; // garde anti-cycle
+            var max = 0;
+            foreach (var to in outgoing[id])
+                max = Math.Max(max, 1 + Level(to, stack));
+            stack.Remove(id);
+            level[id] = max;
+            return max;
+        }
+        foreach (var n in _graph.Nodes) Level(n.Id, new HashSet<string>());
+
+        var maxLevel = level.Values.DefaultIfEmpty(0).Max();
+        var byLevel = _graph.Nodes
+            .GroupBy(n => level[n.Id])
+            .ToDictionary(g => g.Key, g => g.OrderBy(n => n.Name).ToList());
+
+        const double top = 50, bottom = 590, width = 1000;
+        for (var l = 0; l <= maxLevel; l++)
+        {
+            if (!byLevel.TryGetValue(l, out var nodes)) continue;
+            var y = maxLevel == 0 ? (top + bottom) / 2 : bottom - (double)l / maxLevel * (bottom - top);
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                var x = width * (i + 1) / (nodes.Count + 1);
+                _pos[nodes[i].Id] = (x, y);
+            }
+        }
+    }
+
+    private async Task SelectAsync(string id)
+    {
+        if (_graph is null) return;
+        _selected = _graph.Nodes.First(n => n.Id == id);
+        var depIds = _graph.Edges.Where(e => e.From == id).Select(e => e.To).ToHashSet();
+        _directDeps = _graph.Nodes.Where(n => depIds.Contains(n.Id)).ToList();
+        _impact = (await Api.GetImpactAsync(id)).ToList();
+
+        _highlightNodes = new HashSet<string>(depIds) { id };
+        foreach (var a in _impact) _highlightNodes.Add(a.Id);
+    }
+
+    private void Clear()
+    {
+        _selected = null;
+        _highlightNodes = new();
+        _directDeps = new();
+        _impact = new();
+    }
+
+    private string NodeClass(string id)
+    {
+        if (_selected is null) return "";
+        if (id == _selected.Id) return "sel";
+        if (_directDeps.Any(d => d.Id == id)) return "dep";
+        if (_impact.Any(d => d.Id == id)) return "imp";
+        return "dim";
+    }
+
+    private string EdgeClass(GraphEdge e)
+    {
+        if (_selected is null) return "";
+        if (e.From == _selected.Id) return "e-dep";
+        if (_highlightNodes.Contains(e.From) && _highlightNodes.Contains(e.To)) return "e-imp";
+        return "e-dim";
+    }
+
+    private static string F(double d) => d.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Truncate(string s, int n) => s.Length <= n ? s : s[..(n - 1)] + "…";
+    private static string CritLabel(Criticality c) => c switch
+    {
+        Criticality.Vital => "Vital",
+        Criticality.High => "Criticité élevée",
+        Criticality.Medium => "Criticité moyenne",
+        _ => "Criticité faible"
+    };
+    private static string CritDot(Criticality c) => c.ToString().ToLower();
+}
