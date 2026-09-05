@@ -1,0 +1,14 @@
+# Autorise le trafic vers les pods temporaires du challenge ACME (HTTP-01),
+# sinon le default-deny bloquerait la validation du certificat Let's Encrypt.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-acme-solver
+spec:
+  podSelector:
+    matchLabels:
+      acme.cert-manager.io/http01-solver: "true"
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: 8089

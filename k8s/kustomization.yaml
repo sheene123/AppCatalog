@@ -11,6 +11,8 @@ resources:
   - web-deployment.yaml
   - web-service.yaml
   - networkpolicy.yaml
+  - networkpolicy-acme.yaml
+  - ingress.yaml
   - hpa.yaml
 
 # Images injectées par la CD :

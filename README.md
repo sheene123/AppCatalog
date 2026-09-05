@@ -117,6 +117,33 @@ Le déploiement provisionne Neo4j (StatefulSet + volume), l'API et le frontend, 
 les NetworkPolicies et monte le mot de passe Neo4j depuis Key Vault via le CSI Secret
 Store (synchronisé en Secret Kubernetes, jamais en clair dans Git).
 
+### HTTPS (Ingress + Let's Encrypt)
+
+Le frontend est exposé en **HTTPS** derrière un Ingress nginx, avec un certificat
+**Let's Encrypt** automatique (cert-manager) sur un FQDN Azure (`*.cloudapp.azure.com`,
+sans IP). Tous les Services applicatifs sont en `ClusterIP` : l'Ingress est le seul point
+d'entrée public.
+
+Prérequis (une fois sur le cluster) :
+
+```bash
+# 1. Contrôleur Ingress + label DNS Azure (donne un FQDN sans IP)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+kubectl annotate service ingress-nginx-controller -n ingress-nginx \
+  service.beta.kubernetes.io/azure-dns-label-name=appcatalog-<suffixe> --overwrite
+
+# 2. cert-manager (émission/renouvellement automatique des certificats)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+
+# 3. Émetteur Let's Encrypt (adapter le FQDN dans k8s/ingress.yaml)
+kubectl apply -f k8s/clusterissuer.yaml
+```
+
+L'Ingress (`k8s/ingress.yaml`), la NetworkPolicy du challenge ACME
+(`k8s/networkpolicy-acme.yaml`) et le passage du frontend en `ClusterIP` sont ensuite
+gérés par la kustomization. Le certificat est émis en ~1 min et HTTP est redirigé (308)
+vers HTTPS.
+
 ## Sécurité
 
 - **Secrets** : mot de passe Neo4j généré par Terraform, stocké dans Azure Key Vault,
@@ -128,6 +155,11 @@ Store (synchronisé en Secret Kubernetes, jamais en clair dans Git).
   supprimées, quotas CPU/mémoire, `seccompProfile: RuntimeDefault`.
 - **Registre** : ACR sans mot de passe admin ; AKS tire les images par identité managée
   (rôle AcrPull).
+- **Transport** : HTTPS via Ingress + certificat Let's Encrypt, redirection forcée
+  HTTP→HTTPS (HSTS), en-têtes de sécurité (CSP, nosniff, anti-clickjacking). Aucun
+  Service applicatif n'a d'IP publique (tout en ClusterIP derrière l'Ingress).
+- **API** : validation des entrées, requêtes Cypher paramétrées (anti-injection),
+  limitation de débit (429).
 - **CI/CD** : audit des dépendances vulnérables (barrière), déploiement en OIDC sans
   secret stocké.
 

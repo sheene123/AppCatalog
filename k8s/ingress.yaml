@@ -1,0 +1,24 @@
+# Point d'entrée HTTPS unique : termine le TLS et route vers le frontend.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: appcatalog
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true" # force HTTP -> HTTPS
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["appcatalog-eumqx9.francecentral.cloudapp.azure.com"]
+      secretName: appcatalog-tls
+  rules:
+    - host: appcatalog-eumqx9.francecentral.cloudapp.azure.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: appcatalog-web
+                port:
+                  number: 80

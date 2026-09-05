@@ -5,8 +5,9 @@ metadata:
   labels:
     app: appcatalog-web
 spec:
-  # LoadBalancer : point d'entrée public unique. Seul le frontend est exposé.
-  type: LoadBalancer
+  # ClusterIP : le frontend est désormais exposé via l'Ingress HTTPS (ingress-nginx),
+  # plus par une IP publique directe.
+  type: ClusterIP
   selector:
     app: appcatalog-web
   ports:
