@@ -65,6 +65,19 @@ var app = builder.Build();
 
 // --- Pipeline HTTP ---
 
+// En-têtes de sécurité sur toutes les réponses. CSP limitée à frame-ancestors
+// (l'API sert du JSON + Swagger ; pas de restriction de ressources qui casserait Swagger).
+app.Use(async (context, next) =>
+{
+    var h = context.Response.Headers;
+    h["X-Content-Type-Options"] = "nosniff";
+    h["X-Frame-Options"] = "DENY";
+    h["Referrer-Policy"] = "no-referrer";
+    h["Content-Security-Policy"] = "frame-ancestors 'none'";
+    h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+    await next();
+});
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
