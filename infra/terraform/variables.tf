@@ -23,9 +23,9 @@ variable "node_count" {
 }
 
 variable "node_size" {
-  description = "Taille des VM du pool AKS. B2s = économique (2 vCPU / 4 Go)."
+  description = "Taille des VM du pool AKS. D2as_v7 = 2 vCPU / 8 Go (famille autorisée par l'abonnement)."
   type        = string
-  default     = "Standard_B2s"
+  default     = "Standard_D2as_v7"
 }
 
 variable "tags" {
