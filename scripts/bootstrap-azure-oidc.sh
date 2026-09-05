@@ -18,6 +18,8 @@ RG=$(terraform -chdir="$TF_DIR" output -raw resource_group_name)
 ACR_NAME=$(terraform -chdir="$TF_DIR" output -raw acr_name)
 ACR_LOGIN=$(terraform -chdir="$TF_DIR" output -raw acr_login_server)
 AKS_NAME=$(terraform -chdir="$TF_DIR" output -raw aks_name)
+KEYVAULT_NAME=$(terraform -chdir="$TF_DIR" output -raw key_vault_name)
+KV_IDENTITY_CLIENT_ID=$(terraform -chdir="$TF_DIR" output -raw kv_identity_client_id)
 
 SUB_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
@@ -55,6 +57,8 @@ cat <<EOF
    ACR_LOGIN_SERVER       = ${ACR_LOGIN}
    AKS_RESOURCE_GROUP     = ${RG}
    AKS_CLUSTER_NAME       = ${AKS_NAME}
+   KEYVAULT_NAME          = ${KEYVAULT_NAME}
+   KV_IDENTITY_CLIENT_ID  = ${KV_IDENTITY_CLIENT_ID}
 
    Aucun secret : l'auth passe par OIDC. Pousse sur main -> la CD déploie.
 EOF

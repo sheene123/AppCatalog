@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appcatalog-api
+  labels:
+    app: appcatalog-api
+spec:
+  replicas: 2 # sans état (la donnée est dans Neo4j) : on peut scaler librement
+  selector:
+    matchLabels:
+      app: appcatalog-api
+  template:
+    metadata:
+      labels:
+        app: appcatalog-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: appcatalog-api:latest # remplacé par l'image ACR + tag en CD
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ASPNETCORE_HTTP_PORTS
+              value: "8080"
+            - name: Neo4j__Uri
+              value: "bolt://neo4j:7687" # service interne, résolu par le DNS du cluster
+            - name: Neo4j__User
+              value: "neo4j"
+            - name: Neo4j__Password
+              valueFrom:
+                secretKeyRef:
+                  name: neo4j-auth
+                  key: password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            # Monte le secret Key Vault (déclenche la synchro du secret k8s avant démarrage).
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: appcatalog-neo4j

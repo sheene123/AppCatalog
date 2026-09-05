@@ -1,0 +1,139 @@
+@page "/applications"
+@rendermode InteractiveServer
+@using AppCatalog.Web.Api
+@inject ApplicationsClient Api
+
+<PageTitle>Applications</PageTitle>
+
+<h1>Référentiel des applications</h1>
+<p class="text-muted">Données servies par l'API AppCatalog via son service Kubernetes interne.</p>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">
+        Impossible de joindre l'API : @_error
+    </div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">Ajouter une application</div>
+    <div class="card-body">
+        <EditForm Model="_input" OnValidSubmit="AddAsync" FormName="add-app">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <input class="form-control" placeholder="Nom" @bind="_input.Name" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control" placeholder="Propriétaire" @bind="_input.Owner" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control" placeholder="Stack" @bind="_input.Stack" />
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select" @bind="_input.Criticality">
+                        @foreach (var c in Enum.GetValues<Criticality>())
+                        {
+                            <option value="@c">@c</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-primary w-100" type="submit">+</button>
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@if (_apps is null)
+{
+    <p><em>Chargement…</em></p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>#</th><th>Nom</th><th>Propriétaire</th><th>Stack</th>
+                <th>Criticité</th><th>Dernier déploiement</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in _apps)
+            {
+                <tr>
+                    <td>@a.Id</td>
+                    <td>@a.Name</td>
+                    <td>@a.Owner</td>
+                    <td>@a.Stack</td>
+                    <td><span class="badge @Badge(a.Criticality)">@a.Criticality</span></td>
+                    <td>@(a.LastDeployedAt?.ToString("dd/MM/yyyy") ?? "—")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger"
+                                @onclick="() => DeleteAsync(a.Id)">Supprimer</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <p class="text-muted">@_apps.Count application(s).</p>
+}
+
+@code {
+    private IReadOnlyList<ApplicationModel>? _apps;
+    private CreateApplicationInput _input = new();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _error = null;
+            _apps = await Api.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _apps = Array.Empty<ApplicationModel>();
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_input.Name) || string.IsNullOrWhiteSpace(_input.Owner))
+            return;
+        try
+        {
+            await Api.CreateAsync(_input);
+            _input = new();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        try
+        {
+            await Api.DeleteAsync(id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string Badge(Criticality c) => c switch
+    {
+        Criticality.Vital => "bg-danger",
+        Criticality.High => "bg-warning text-dark",
+        Criticality.Medium => "bg-secondary",
+        _ => "bg-light text-dark"
+    };
+}

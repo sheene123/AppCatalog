@@ -5,12 +5,19 @@ namespace: appcatalog
 
 resources:
   - namespace.yaml
-  - deployment.yaml
-  - service.yaml
+  - neo4j.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - web-deployment.yaml
+  - web-service.yaml
+  - networkpolicy.yaml
   - hpa.yaml
 
-# L'image réelle est injectée par la CD :
-#   kustomize edit set image appcatalog=<acr>.azurecr.io/appcatalog:<sha>
+# Images injectées par la CD :
+#   kustomize edit set image appcatalog-api=<acr>/appcatalog-api:<sha>
+#   kustomize edit set image appcatalog-web=<acr>/appcatalog-web:<sha>
 images:
-  - name: appcatalog
+  - name: appcatalog-api
+    newTag: latest
+  - name: appcatalog-web
     newTag: latest

@@ -4,15 +4,12 @@ using AppCatalog.Api.Domain;
 namespace AppCatalog.Api.Contracts;
 
 /// <summary>
-/// Contrats (DTO) échangés avec les clients de l'API.
-/// On les sépare de l'entité Application pour deux raisons :
-///  - ne pas exposer les champs d'audit en écriture (CreatedAt/UpdatedAt) ;
-///  - pouvoir faire évoluer le stockage sans casser le contrat public.
-/// Ce sont des « records » : types immuables, égalité par valeur, parfaits pour du transport.
+/// Contrats (DTO) échangés avec les clients. Séparés de l'entité pour ne pas
+/// exposer les champs d'audit en écriture et découpler le contrat du stockage.
 /// </summary>
 
 public record ApplicationResponse(
-    int Id,
+    string Id,
     string Name,
     string Owner,
     string Stack,
@@ -55,10 +52,13 @@ public record UpdateApplicationRequest
     public DateTimeOffset? LastDeployedAt { get; init; }
 }
 
-/// <summary>
-/// Conversions entité &lt;-&gt; DTO. Fait à la main volontairement (pas d'AutoMapper) :
-/// le mapping reste explicite et lisible, ce qui compte plus que la concision ici.
-/// </summary>
+/// <summary>Corps de la requête pour lier une dépendance : « cette appli dépend de TargetId ».</summary>
+public record AddDependencyRequest
+{
+    [Required]
+    public string TargetId { get; init; } = string.Empty;
+}
+
 public static class ApplicationMapping
 {
     public static ApplicationResponse ToResponse(this Application a) => new(

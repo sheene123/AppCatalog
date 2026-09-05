@@ -1,0 +1,63 @@
+# Zero-trust réseau : par défaut on refuse tout le trafic entrant dans le namespace,
+# puis on ouvre uniquement les flux légitimes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {} # tous les pods du namespace
+  policyTypes:
+    - Ingress
+---
+# Le frontend accepte le trafic entrant (depuis le LoadBalancer / l'extérieur).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-allow-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: appcatalog-web
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 8080
+---
+# L'API n'accepte que le trafic venant du frontend.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-web-only
+spec:
+  podSelector:
+    matchLabels:
+      app: appcatalog-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: appcatalog-web
+      ports:
+        - port: 8080
+---
+# Neo4j n'accepte que le trafic venant de l'API (port Bolt).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: neo4j-from-api-only
+spec:
+  podSelector:
+    matchLabels:
+      app: neo4j
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: appcatalog-api
+      ports:
+        - port: 7687

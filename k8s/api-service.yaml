@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: appcatalog-api
+  labels:
+    app: appcatalog-api
+spec:
+  # ClusterIP : service INTERNE au cluster, pas d'IP publique.
+  # Le frontend l'appelle par son nom DNS « appcatalog-api » (résolu par CoreDNS).
+  type: ClusterIP
+  selector:
+    app: appcatalog-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

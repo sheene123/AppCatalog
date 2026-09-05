@@ -1,53 +1,38 @@
 using AppCatalog.Api.Contracts;
 using AppCatalog.Api.Data;
-using AppCatalog.Api.Domain;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace AppCatalog.Api.Controllers;
 
 /// <summary>
-/// Points d'entrée REST du référentiel d'applications.
-/// [ApiController] active les conventions Web API : validation automatique du modèle
-/// (400 + ProblemDetails si invalide), binding des paramètres, etc.
+/// Points d'entrée REST du référentiel. Le controller ne connaît que
+/// IApplicationRepository : il ignore que le stockage est un graphe Neo4j.
 /// </summary>
 [ApiController]
-[Route("api/[controller]")] // -> /api/applications
+[Route("api/[controller]")]
 public class ApplicationsController : ControllerBase
 {
-    private readonly AppCatalogDbContext _db;
+    private readonly IApplicationRepository _repo;
 
-    // Le DbContext est injecté par le conteneur de dépendances (voir Program.cs).
-    public ApplicationsController(AppCatalogDbContext db) => _db = db;
+    public ApplicationsController(IApplicationRepository repo) => _repo = repo;
 
-    /// <summary>Liste toutes les applications.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<ApplicationResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IEnumerable<ApplicationResponse>>> GetAll(CancellationToken ct)
     {
-        // AsNoTracking : lecture seule, EF ne suit pas les entités -> plus rapide.
-        var items = await _db.Applications
-            .AsNoTracking()
-            .OrderBy(a => a.Name)
-            .Select(a => a.ToResponse())
-            .ToListAsync(ct);
-
-        return Ok(items);
+        var items = await _repo.GetAllAsync(ct);
+        return Ok(items.Select(a => a.ToResponse()));
     }
 
-    /// <summary>Récupère une application par son identifiant.</summary>
-    [HttpGet("{id:int}")]
+    [HttpGet("{id}")]
     [ProducesResponseType(typeof(ApplicationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ApplicationResponse>> GetById(int id, CancellationToken ct)
+    public async Task<ActionResult<ApplicationResponse>> GetById(string id, CancellationToken ct)
     {
-        var app = await _db.Applications.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == id, ct);
-
+        var app = await _repo.GetByIdAsync(id, ct);
         return app is null ? NotFound() : Ok(app.ToResponse());
     }
 
-    /// <summary>Crée une nouvelle application.</summary>
     [HttpPost]
     [ProducesResponseType(typeof(ApplicationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -59,48 +44,77 @@ public class ApplicationsController : ControllerBase
         app.CreatedAt = now;
         app.UpdatedAt = now;
 
-        _db.Applications.Add(app);
-        await _db.SaveChangesAsync(ct);
-
-        // 201 Created + en-tête Location pointant vers GET /api/applications/{id}.
-        return CreatedAtAction(nameof(GetById), new { id = app.Id }, app.ToResponse());
+        var created = await _repo.CreateAsync(app, ct);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created.ToResponse());
     }
 
-    /// <summary>Met à jour une application existante (remplacement complet).</summary>
-    [HttpPut("{id:int}")]
+    [HttpPut("{id}")]
     [ProducesResponseType(typeof(ApplicationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApplicationResponse>> Update(
-        int id, UpdateApplicationRequest request, CancellationToken ct)
+        string id, UpdateApplicationRequest request, CancellationToken ct)
     {
-        var app = await _db.Applications.FirstOrDefaultAsync(a => a.Id == id, ct);
-        if (app is null)
+        var existing = await _repo.GetByIdAsync(id, ct);
+        if (existing is null)
             return NotFound();
 
-        app.Name = request.Name;
-        app.Owner = request.Owner;
-        app.Stack = request.Stack;
-        app.Criticality = request.Criticality;
-        app.LastDeployedAt = request.LastDeployedAt;
-        app.UpdatedAt = DateTimeOffset.UtcNow;
+        existing.Name = request.Name;
+        existing.Owner = request.Owner;
+        existing.Stack = request.Stack;
+        existing.Criticality = request.Criticality;
+        existing.LastDeployedAt = request.LastDeployedAt;
+        existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await _db.SaveChangesAsync(ct);
-        return Ok(app.ToResponse());
+        var updated = await _repo.UpdateAsync(existing, ct);
+        return updated is null ? NotFound() : Ok(updated.ToResponse());
     }
 
-    /// <summary>Supprime une application.</summary>
-    [HttpDelete("{id:int}")]
+    [HttpDelete("{id}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    public async Task<IActionResult> Delete(string id, CancellationToken ct)
     {
-        var app = await _db.Applications.FirstOrDefaultAsync(a => a.Id == id, ct);
-        if (app is null)
-            return NotFound();
+        var deleted = await _repo.DeleteAsync(id, ct);
+        return deleted ? NoContent() : NotFound();
+    }
 
-        _db.Applications.Remove(app);
-        await _db.SaveChangesAsync(ct);
-        return NoContent();
+    // --- Partie graphe : dépendances entre applications ---
+
+    /// <summary>Déclare que l'application {id} dépend d'une autre (TargetId).</summary>
+    [HttpPost("{id}/dependencies")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> AddDependency(
+        string id, AddDependencyRequest request, CancellationToken ct)
+    {
+        var ok = await _repo.AddDependencyAsync(id, request.TargetId, ct);
+        return ok ? NoContent() : NotFound(); // 404 si l'une des deux applis n'existe pas
+    }
+
+    /// <summary>Applications dont {id} dépend (voisins directs sortants).</summary>
+    [HttpGet("{id}/dependencies")]
+    [ProducesResponseType(typeof(IEnumerable<ApplicationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<ApplicationResponse>>> GetDependencies(
+        string id, CancellationToken ct)
+    {
+        if (await _repo.GetByIdAsync(id, ct) is null)
+            return NotFound();
+        var deps = await _repo.GetDependenciesAsync(id, ct);
+        return Ok(deps.Select(a => a.ToResponse()));
+    }
+
+    /// <summary>Applications impactées si {id} tombe (qui en dépendent, transitivement).</summary>
+    [HttpGet("{id}/impact")]
+    [ProducesResponseType(typeof(IEnumerable<ApplicationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IEnumerable<ApplicationResponse>>> GetImpact(
+        string id, CancellationToken ct)
+    {
+        if (await _repo.GetByIdAsync(id, ct) is null)
+            return NotFound();
+        var impacted = await _repo.GetImpactAsync(id, ct);
+        return Ok(impacted.Select(a => a.ToResponse()));
     }
 }

@@ -1,18 +1,14 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: appcatalog
+  name: appcatalog-web
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: appcatalog
+    name: appcatalog-web
   minReplicas: 1
-  # ATTENTION : au-delà de 1 réplica, la base SQLite locale rend les données
-  # incohérentes. Ce HPA montre la mécanique d'autoscaling (basée sur le CPU via
-  # metrics-server, actif par défaut sur AKS) ; il faut externaliser l'état
-  # (PostgreSQL) avant de l'utiliser réellement.
-  maxReplicas: 3
+  maxReplicas: 4
   metrics:
     - type: Resource
       resource:

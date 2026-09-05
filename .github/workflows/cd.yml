@@ -1,6 +1,5 @@
 name: CD
 
-# Se déclenche après un CI réussi sur main, ou manuellement.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -8,8 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Authentification à Azure par OIDC : aucun secret/mot de passe stocké.
-# GitHub émet un jeton signé, Azure le vérifie via la « federated credential ».
 permissions:
   id-token: write
   contents: read
@@ -18,9 +15,6 @@ jobs:
   deploy:
     name: Build ACR + déploiement AKS
     runs-on: ubuntu-latest
-    # Ne déploie que si le CI a réussi ET si l'auth Azure est configurée
-    # (variable AZURE_CLIENT_ID présente). Sans ça, le job est ignoré proprement
-    # plutôt que d'échouer — utile tant que le bootstrap OIDC n'est pas fait.
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' ||
            github.event.workflow_run.conclusion == 'success')
@@ -36,15 +30,20 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Build de l'image directement dans ACR (pas besoin de Docker sur le runner).
-      # Deux tags : le SHA du commit (traçabilité) et latest.
-      - name: Build & push image dans ACR
+      # Build des deux images (API et frontend) directement dans ACR.
+      - name: Build & push image API
         run: |
-          az acr build \
-            --registry "${{ vars.ACR_NAME }}" \
-            --image "appcatalog:${{ github.sha }}" \
-            --image "appcatalog:latest" \
-            .
+          az acr build --registry "${{ vars.ACR_NAME }}" \
+            --image "appcatalog-api:${{ github.sha }}" \
+            --image "appcatalog-api:latest" \
+            --file Dockerfile .
+
+      - name: Build & push image Web
+        run: |
+          az acr build --registry "${{ vars.ACR_NAME }}" \
+            --image "appcatalog-web:${{ github.sha }}" \
+            --image "appcatalog-web:latest" \
+            --file Dockerfile.web .
 
       - name: Configurer kubectl sur AKS
         run: |
@@ -53,18 +52,31 @@ jobs:
             --name "${{ vars.AKS_CLUSTER_NAME }}" \
             --admin --overwrite-existing
 
+      # SecretProviderClass : on injecte les valeurs Key Vault (envsubst) puis on applique.
+      # Le namespace doit exister d'abord.
+      - name: Appliquer la SecretProviderClass (Key Vault)
+        env:
+          KEYVAULT_NAME: ${{ vars.KEYVAULT_NAME }}
+          KV_IDENTITY_CLIENT_ID: ${{ vars.KV_IDENTITY_CLIENT_ID }}
+          TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          envsubst < k8s/secretproviderclass.yaml | kubectl apply -n appcatalog -f -
+
       - name: Déployer sur AKS
         run: |
           kubectl apply -k k8s/
-          # Injecte l'image ACR + le tag du commit, puis attend la fin du rollout.
-          kubectl set image deployment/appcatalog \
-            api="${{ vars.ACR_LOGIN_SERVER }}/appcatalog:${{ github.sha }}" \
-            -n appcatalog
-          kubectl rollout status deployment/appcatalog -n appcatalog --timeout=180s
+          kubectl set image deployment/appcatalog-api \
+            api="${{ vars.ACR_LOGIN_SERVER }}/appcatalog-api:${{ github.sha }}" -n appcatalog
+          kubectl set image deployment/appcatalog-web \
+            web="${{ vars.ACR_LOGIN_SERVER }}/appcatalog-web:${{ github.sha }}" -n appcatalog
+          kubectl rollout status statefulset/neo4j -n appcatalog --timeout=240s
+          kubectl rollout status deployment/appcatalog-api -n appcatalog --timeout=180s
+          kubectl rollout status deployment/appcatalog-web -n appcatalog --timeout=180s
 
-      - name: Afficher l'URL publique
+      - name: Afficher l'URL publique du frontend
         run: |
-          echo "Service :"
-          kubectl get service appcatalog -n appcatalog \
+          echo "IP publique du frontend :"
+          kubectl get service appcatalog-web -n appcatalog \
             -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
           echo ""

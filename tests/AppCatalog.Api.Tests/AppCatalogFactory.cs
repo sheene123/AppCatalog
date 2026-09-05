@@ -1,60 +1,45 @@
-using AppCatalog.Api.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
+using Testcontainers.Neo4j;
 
 namespace AppCatalog.Api.Tests;
 
 /// <summary>
-/// Démarre l'API réelle en mémoire pour les tests d'intégration.
-/// On remplace la base SQLite fichier par une base SQLite « in-memory » :
-/// mêmes requêtes, même EF Core, mais rien à installer et tout est jetable.
-///
-/// La connexion in-memory est gardée ouverte pendant toute la vie de la factory :
-/// dès qu'on la ferme, SQLite détruit la base. On repart donc d'une base propre
-/// (schéma + données de seed) à chaque nouvelle factory, ce qui isole les tests.
+/// Démarre l'API réelle branchée sur un vrai Neo4j éphémère (conteneur Testcontainers).
+/// Un seul conteneur pour toute la classe de tests (IClassFixture) : rapide, et les
+/// tests sont écrits pour être indépendants de l'état partagé (chacun crée/nettoie
+/// ses propres données).
 /// </summary>
-public class AppCatalogFactory : WebApplicationFactory<Program>
+public class AppCatalogFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly SqliteConnection _connection = new("DataSource=:memory:");
+    private readonly Neo4jContainer _neo4j = new Neo4jBuilder()
+        .WithImage("neo4j:5.24")
+        .Build();
+
+    public async Task InitializeAsync() => await _neo4j.StartAsync();
+
+    async Task IAsyncLifetime.DisposeAsync()
+    {
+        await _neo4j.DisposeAsync();
+        await base.DisposeAsync();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Environnement « Testing » : Program.cs saute alors le Migrate() de prod.
         builder.UseEnvironment("Testing");
-
-        _connection.Open();
-
-        builder.ConfigureTestServices(services =>
+        builder.ConfigureAppConfiguration((_, config) =>
         {
-            // On retire l'enregistrement DbContext de prod (SQLite fichier)...
-            services.RemoveAll<DbContextOptions<AppCatalogDbContext>>();
-            // ...et on le remplace par la connexion in-memory partagée.
-            services.AddDbContext<AppCatalogDbContext>(o => o.UseSqlite(_connection));
+            // Schéma bolt:// (connexion directe) plutôt que neo4j:// (routing) :
+            // avec le routing, Neo4j annonce son adresse interne au conteneur,
+            // injoignable depuis l'hôte -> échec de connexion.
+            var uri = _neo4j.GetConnectionString().Replace("neo4j://", "bolt://");
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Neo4j:Uri"] = uri,
+                ["Neo4j:User"] = "neo4j",
+                ["Neo4j:Password"] = "" // module sans auth -> AuthTokens.None côté API
+            });
         });
-    }
-
-    protected override IHost CreateHost(IHostBuilder builder)
-    {
-        var host = base.CreateHost(builder);
-
-        // Crée le schéma et insère les données de seed dans la base in-memory.
-        using var scope = host.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppCatalogDbContext>();
-        db.Database.EnsureCreated();
-
-        return host;
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        base.Dispose(disposing);
-        if (disposing)
-            _connection.Dispose(); // ferme la connexion -> détruit la base in-memory
     }
 }

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: appcatalog-web
+  labels:
+    app: appcatalog-web
+spec:
+  # LoadBalancer : point d'entrée public unique. Seul le frontend est exposé.
+  type: LoadBalancer
+  selector:
+    app: appcatalog-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

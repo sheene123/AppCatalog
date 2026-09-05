@@ -39,10 +39,12 @@ jobs:
           ! grep -q "has the following vulnerable packages" audit.log
 
   docker:
-    name: Build image Docker
+    name: Build images Docker
     runs-on: ubuntu-latest
     needs: build-test
     steps:
       - uses: actions/checkout@v4
-      - name: Construire l'image
-        run: docker build -t appcatalog:ci .
+      - name: Construire l'image API
+        run: docker build -f Dockerfile -t appcatalog-api:ci .
+      - name: Construire l'image Web
+        run: docker build -f Dockerfile.web -t appcatalog-web:ci .

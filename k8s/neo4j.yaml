@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  labels:
+    app: neo4j
+spec:
+  # ClusterIP interne : Neo4j n'est jamais exposé publiquement.
+  type: ClusterIP
+  selector:
+    app: neo4j
+  ports:
+    - name: bolt
+      port: 7687
+      targetPort: 7687
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 7474      # utilisateur « neo4j » de l'image officielle
+        runAsGroup: 7474
+        fsGroup: 7474
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: neo4j
+          image: neo4j:5.24
+          ports:
+            - name: bolt
+              containerPort: 7687
+          env:
+            # Mot de passe injecté depuis le secret (synchronisé depuis Azure Key Vault).
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: neo4j-auth
+                  key: password
+            # Neo4j attend NEO4J_AUTH = user/password : on compose par expansion $(VAR).
+            - name: NEO4J_AUTH
+              value: "neo4j/$(NEO4J_PASSWORD)"
+            - name: NEO4J_server_memory_heap_max__size
+              value: "512m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            tcpSocket:
+              port: bolt
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: bolt
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 640Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # Monte le secret Key Vault (déclenche la synchro du secret k8s).
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: appcatalog-neo4j
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
