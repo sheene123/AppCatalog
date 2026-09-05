@@ -1,3 +1,4 @@
+using AppCatalog.Api.Auth;
 using AppCatalog.Api.Contracts;
 using AppCatalog.Api.Data;
 using Microsoft.AspNetCore.Mvc;
@@ -34,6 +35,7 @@ public class ApplicationsController : ControllerBase
     }
 
     [HttpPost]
+    [RequireWriteKey]
     [ProducesResponseType(typeof(ApplicationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApplicationResponse>> Create(
@@ -49,6 +51,7 @@ public class ApplicationsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [RequireWriteKey]
     [ProducesResponseType(typeof(ApplicationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -71,6 +74,7 @@ public class ApplicationsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [RequireWriteKey]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(string id, CancellationToken ct)
@@ -94,6 +98,7 @@ public class ApplicationsController : ControllerBase
 
     /// <summary>Déclare que l'application {id} dépend d'une autre (TargetId).</summary>
     [HttpPost("{id}/dependencies")]
+    [RequireWriteKey]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> AddDependency(

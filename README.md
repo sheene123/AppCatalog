@@ -59,7 +59,16 @@ le frontend ne joint que l'API, l'API seule joint Neo4j.
 | POST | `/api/applications/{id}/dependencies` | Déclarer une dépendance (`{ "targetId": "..." }`) |
 | GET | `/api/applications/{id}/dependencies` | Applications dont {id} dépend |
 | GET | `/api/applications/{id}/impact` | **Applications impactées si {id} tombe** (transitif) |
+| GET | `/api/applications/graph` | Le graphe complet (nœuds + dépendances) |
+| GET | `/api/auth/verify` | Vérifie la clé d'administration |
 | GET | `/health` | Disponibilité (dont connexion Neo4j) |
+
+**Lecture publique, écriture protégée.** Les `GET` sont ouverts à tous. Les écritures
+(`POST` / `PUT` / `DELETE`, dépendances comprises) exigent une **clé d'administration**
+envoyée en en-tête `Authorization: Bearer <clé>` ; sans elle, l'API répond `401`. La clé
+attendue vient de la configuration `Api:WriteKey` (un secret ; vide en local = écriture
+ouverte). Le frontend propose une page **Connexion** qui débloque l'ajout et la
+suppression une fois la clé saisie.
 
 ## Lancer en local
 
@@ -149,6 +158,9 @@ vers HTTPS.
 - **Secrets** : mot de passe Neo4j généré par Terraform, stocké dans Azure Key Vault,
   monté dans les pods via le CSI Secret Store (identité managée). Rien en clair dans le
   code, l'image ou Git.
+- **Authentification** : lecture publique, écriture protégée par une clé d'administration
+  (en-tête `Bearer`) vérifiée **côté API** (pas seulement masquée dans l'UI), comparaison
+  à temps constant. La clé vient d'un secret Kubernetes (Key Vault en cible).
 - **Réseau** : NetworkPolicies (Calico) en zero-trust — deny par défaut, puis
   web→api et api→neo4j uniquement.
 - **Conteneurs** : `runAsNonRoot`, système de fichiers en lecture seule, capacités Linux

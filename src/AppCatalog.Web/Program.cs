@@ -15,6 +15,9 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5080";
 builder.Services.AddHttpClient<ApplicationsClient>(client =>
     client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/"));
 
+// État d'authentification admin, porté par le circuit Blazor.
+builder.Services.AddScoped<AdminSession>();
+
 // Sonde de disponibilité (utilisée par Kubernetes).
 builder.Services.AddHealthChecks();
 

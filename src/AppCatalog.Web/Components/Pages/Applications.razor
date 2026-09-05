@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using AppCatalog.Web.Api
 @inject ApplicationsClient Api
+@inject AdminSession Session
 
 <PageTitle>Catalogue applicatif</PageTitle>
 
@@ -10,6 +11,21 @@
     <p>Le référentiel des applications du système d'information : propriétaire, pile
        technique, criticité et dernière mise en production.</p>
 </div>
+
+@if (Session.IsAdmin)
+{
+    <div class="admin-bar">
+        <span class="who">Administrateur</span>
+        <span class="muted">Ajout et suppression activés.</span>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => Session.SignOut()">Se déconnecter</button>
+    </div>
+}
+else
+{
+    <div class="admin-bar public">
+        Consultation seule. <a href="login">Connectez-vous</a> pour ajouter ou supprimer des applications.
+    </div>
+}
 
 @if (_error is not null)
 {
@@ -40,9 +56,12 @@ else
                         @onclick="() => _filter = c">@CritLabel(c)</button>
             }
         </div>
-        <button class="btn btn-primary add-btn" @onclick="() => _showAdd = !_showAdd">
-            @(_showAdd ? "Annuler" : "+ Nouvelle application")
-        </button>
+        @if (Session.IsAdmin)
+        {
+            <button class="btn btn-primary add-btn" @onclick="() => _showAdd = !_showAdd">
+                @(_showAdd ? "Annuler" : "+ Nouvelle application")
+            </button>
+        }
     </div>
 
     @if (_showAdd)
@@ -69,7 +88,8 @@ else
         <thead>
             <tr>
                 <th>Application</th><th>Propriétaire</th><th>Pile technique</th>
-                <th>Criticité</th><th>Dernier déploiement</th><th></th>
+                <th>Criticité</th><th>Dernier déploiement</th>
+                @if (Session.IsAdmin) { <th></th> }
             </tr>
         </thead>
         <tbody>
@@ -81,9 +101,12 @@ else
                     <td class="muted">@a.Stack</td>
                     <td><span class="badge crit-@a.Criticality.ToString().ToLower()">@CritLabel(a.Criticality)</span></td>
                     <td class="muted">@(a.LastDeployedAt?.ToString("dd/MM/yyyy") ?? "jamais")</td>
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(a.Id)">Supprimer</button>
-                    </td>
+                    @if (Session.IsAdmin)
+                    {
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(a.Id)">Supprimer</button>
+                        </td>
+                    }
                 </tr>
             }
         </tbody>

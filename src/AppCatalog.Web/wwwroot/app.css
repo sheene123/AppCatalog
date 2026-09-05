@@ -155,3 +155,10 @@ h1:focus {
     .carto-layout { grid-template-columns: 1fr; }
     .add-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Connexion */
+.login-card { max-width: 420px; border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; background: #fff; }
+.login-card h1 { font-size: 1.4rem; font-weight: 700; }
+.admin-bar { display: flex; align-items: center; gap: .75rem; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .5rem .9rem; margin-bottom: 1rem; font-size: .9rem; }
+.admin-bar .who { font-weight: 600; color: var(--ink); }
+.admin-bar.public { color: var(--muted); }

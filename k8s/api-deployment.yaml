@@ -39,6 +39,14 @@ spec:
                 secretKeyRef:
                   name: neo4j-auth
                   key: password
+            # Clé d'administration (protège les écritures). Optionnelle : si le secret
+            # est absent, les écritures restent ouvertes (dev). En prod, on la fournit.
+            - name: Api__WriteKey
+              valueFrom:
+                secretKeyRef:
+                  name: api-auth
+                  key: write-key
+                  optional: true
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

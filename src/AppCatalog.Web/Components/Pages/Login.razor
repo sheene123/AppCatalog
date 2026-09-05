@@ -1,0 +1,62 @@
+@page "/login"
+@rendermode InteractiveServer
+@using AppCatalog.Web.Api
+@inject ApplicationsClient Api
+@inject AdminSession Session
+@inject NavigationManager Nav
+
+<PageTitle>Connexion</PageTitle>
+
+<div class="login-card">
+    <h1>Connexion administrateur</h1>
+    <p class="muted">La consultation du catalogue et de la cartographie est publique.
+        La connexion débloque l'ajout et la suppression d'applications.</p>
+
+    @if (Session.IsAdmin)
+    {
+        <div class="alert alert-success">Vous êtes connecté en tant qu'administrateur.</div>
+        <a class="btn btn-primary" href="catalogue">Aller au catalogue</a>
+    }
+    else
+    {
+        @if (_error)
+        {
+            <div class="alert alert-danger">Clé d'administration invalide.</div>
+        }
+        <EditForm Model="this" OnValidSubmit="SignInAsync" FormName="login">
+            <input type="password" class="form-control" placeholder="Clé d'administration"
+                   @bind="_key" @bind:event="oninput" />
+            <button class="btn btn-primary mt-2" type="submit" disabled="@_busy">
+                @(_busy ? "Vérification…" : "Se connecter")
+            </button>
+        </EditForm>
+    }
+</div>
+
+@code {
+    private string _key = "";
+    private bool _error;
+    private bool _busy;
+
+    private async Task SignInAsync()
+    {
+        _error = false;
+        _busy = true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_key) && await Api.VerifyKeyAsync(_key))
+            {
+                Session.SignIn(_key);
+                Nav.NavigateTo("/catalogue");
+            }
+            else
+            {
+                _error = true;
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
