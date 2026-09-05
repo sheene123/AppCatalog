@@ -30,20 +30,28 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Build des deux images (API et frontend) directement dans ACR.
+      # Les images sont buildées sur le runner (Docker dispo) puis poussées vers ACR.
+      # (az acr build / ACR Tasks n'est pas autorisé sur cet abonnement.)
+      - name: Connexion Docker à ACR
+        run: az acr login --name "${{ vars.ACR_NAME }}"
+
       - name: Build & push image API
+        env:
+          ACR: ${{ vars.ACR_LOGIN_SERVER }}
+          SHA: ${{ github.sha }}
         run: |
-          az acr build --registry "${{ vars.ACR_NAME }}" \
-            --image "appcatalog-api:${{ github.sha }}" \
-            --image "appcatalog-api:latest" \
-            --file Dockerfile .
+          docker build -f Dockerfile -t "$ACR/appcatalog-api:$SHA" -t "$ACR/appcatalog-api:latest" .
+          docker push "$ACR/appcatalog-api:$SHA"
+          docker push "$ACR/appcatalog-api:latest"
 
       - name: Build & push image Web
+        env:
+          ACR: ${{ vars.ACR_LOGIN_SERVER }}
+          SHA: ${{ github.sha }}
         run: |
-          az acr build --registry "${{ vars.ACR_NAME }}" \
-            --image "appcatalog-web:${{ github.sha }}" \
-            --image "appcatalog-web:latest" \
-            --file Dockerfile.web .
+          docker build -f Dockerfile.web -t "$ACR/appcatalog-web:$SHA" -t "$ACR/appcatalog-web:latest" .
+          docker push "$ACR/appcatalog-web:$SHA"
+          docker push "$ACR/appcatalog-web:latest"
 
       - name: Configurer kubectl sur AKS
         run: |
