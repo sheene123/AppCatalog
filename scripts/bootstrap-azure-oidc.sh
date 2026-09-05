@@ -38,6 +38,22 @@ az ad app federated-credential create --id "$APP_ID" --parameters "{
   \"audiences\": [\"api://AzureADTokenExchange\"]
 }" >/dev/null
 
+# GitHub présente aussi un sujet « immuable » incluant les IDs numériques
+# (protection anti-renommage) : repo:<owner>@<ownerId>/<repo>@<repoId>:ref:...
+# On crée le credential correspondant pour couvrir les deux formats.
+OWNER_ID=$(gh api "repos/${GITHUB_REPO}" --jq '.owner.id' 2>/dev/null || echo "")
+REPO_ID=$(gh api "repos/${GITHUB_REPO}" --jq '.id' 2>/dev/null || echo "")
+OWNER="${GITHUB_REPO%%/*}"; REPO="${GITHUB_REPO##*/}"
+if [ -n "$OWNER_ID" ] && [ -n "$REPO_ID" ]; then
+  echo "→ Federated credential immuable (IDs ${OWNER_ID}/${REPO_ID})..."
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"gh-main-immutable\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"repo:${OWNER}@${OWNER_ID}/${REPO}@${REPO_ID}:ref:refs/heads/main\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }" >/dev/null || true
+fi
+
 echo "→ Attribution du rôle Contributor sur le groupe $RG..."
 # (Least-privilege possible ensuite : AcrPush sur l'ACR + Cluster Admin sur l'AKS.)
 az role assignment create \
