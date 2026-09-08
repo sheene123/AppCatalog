@@ -1,0 +1,83 @@
+name: Extinction nocturne
+
+# Le cluster n'est allumé que de 08h00 à 20h00 (heure de Paris) : les nœuds AKS
+# sont désalloués la nuit — ~50 % de la facture compute en moins. L'état du
+# cluster survit (etcd, Secrets, certificat Let's Encrypt) et le disque de Neo4j
+# reste attaché, tout comme l'IP publique de l'Ingress et son label DNS.
+
+on:
+  schedule:
+    # Crons en UTC. Paris vaut UTC+2 l'été et UTC+1 l'hiver : on déclenche aux
+    # deux heures possibles et c'est l'étape « État visé » qui tranche.
+    #   06:00 / 07:00 UTC -> 08:00 Paris (allumage)
+    #   18:00 / 19:00 UTC -> 20:00 Paris (extinction)
+    - cron: '0 6,7,18,19 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action à appliquer"
+        type: choice
+        options: [auto, start, stop]
+        default: auto
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  power:
+    name: Allumer / éteindre le cluster AKS
+    runs-on: ubuntu-latest
+    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+
+    steps:
+      - name: État visé (fenêtre 08h-20h, heure de Paris)
+        id: target
+        env:
+          MODE: ${{ inputs.action || 'auto' }}
+        run: |
+          if [ "$MODE" != "auto" ]; then
+            echo "state=$MODE" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # On déduit l'état visé de l'heure réelle de Paris, et non du cron qui a
+          # déclenché : le planificateur GitHub est « best effort » (retards
+          # possibles) et cette forme reste juste malgré le retard comme malgré le
+          # changement d'heure.
+          hour=$(TZ=Europe/Paris date +%-H)
+          if [ "$hour" -ge 8 ] && [ "$hour" -lt 20 ]; then
+            echo "state=start" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=stop" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Connexion à Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Appliquer l'état visé
+        env:
+          RG: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS: ${{ vars.AKS_CLUSTER_NAME }}
+          TARGET: ${{ steps.target.outputs.state }}
+        run: |
+          info=$(az aks show --resource-group "$RG" --name "$AKS" -o json)
+          power=$(echo "$info" | jq -r '.powerState.code')
+          provisioning=$(echo "$info" | jq -r '.provisioningState')
+          echo "Cluster $AKS : $power / $provisioning — état visé : $TARGET"
+
+          # Un start/stop déjà en cours (déclenché par la CD, par exemple) ferait
+          # échouer l'appel : on laisse l'opération se terminer.
+          if [ "$provisioning" != "Succeeded" ] && [ "$provisioning" != "Failed" ]; then
+            echo "Opération en cours ($provisioning) : rien à faire."
+            exit 0
+          fi
+
+          case "$TARGET:$power" in
+            start:Stopped) az aks start --resource-group "$RG" --name "$AKS" ;;
+            stop:Running)  az aks stop  --resource-group "$RG" --name "$AKS" ;;
+            *)             echo "Déjà dans l'état visé, rien à faire." ;;
+          esac
