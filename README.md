@@ -125,28 +125,6 @@ Le déploiement provisionne Neo4j (StatefulSet + volume), l'API et le frontend, 
 les NetworkPolicies et monte le mot de passe Neo4j depuis Key Vault via le CSI Secret
 Store (synchronisé en Secret Kubernetes, jamais en clair dans Git).
 
-### Extinction nocturne (FinOps)
-
-Le cluster n'est allumé que de **08h00 à 20h00** (heure de Paris). Le workflow
-`.github/workflows/schedule.yml` appelle `az aks stop` / `az aks start` : les nœuds sont
-**désalloués** la nuit, donc plus facturés — le control plane est déjà gratuit
-(`sku_tier = "Free"`). Environ **50 % de la facture compute** en moins, sans rien perdre :
-l'état du cluster (etcd, Secrets, certificat Let's Encrypt), le volume de Neo4j et l'IP
-publique de l'Ingress avec son label DNS survivent tous à l'extinction.
-
-L'authentification réutilise l'OIDC déjà en place (aucun secret à ajouter). Le workflow
-déduit l'état visé de l'heure de Paris plutôt que du cron qui l'a déclenché : correct
-malgré le changement d'heure comme malgré les retards du planificateur GitHub, qui est
-« best effort ». Deux réserves à connaître :
-
-- les workflows planifiés sont **désactivés après 60 jours sans commit** sur le dépôt ;
-- le redémarrage prend ~5 min (nœuds) plus une minute ou deux pour Neo4j et les probes.
-
-Le déclenchement manuel (`Actions > Extinction nocturne > Run workflow`) accepte
-`start`, `stop` ou `auto`. Un déploiement nocturne rallume le cluster (étape dédiée dans
-la CD) et le laisse allumé jusqu'au passage de 20h suivant : pour le rééteindre tout de
-suite, lancer le workflow à la main en `stop`.
-
 ### HTTPS (Ingress + Let's Encrypt)
 
 Le frontend est exposé en **HTTPS** derrière un Ingress nginx, avec un certificat
