@@ -53,6 +53,21 @@ jobs:
           docker push "$ACR/appcatalog-web:$SHA"
           docker push "$ACR/appcatalog-web:latest"
 
+      # Le cluster est éteint de 20h à 8h (workflow « Extinction nocturne ») :
+      # un déploiement hors de cette fenêtre doit d'abord le rallumer, sinon
+      # kubectl tombe sur un serveur d'API injoignable.
+      - name: Rallumer le cluster s'il est éteint
+        env:
+          RG: ${{ vars.AKS_RESOURCE_GROUP }}
+          AKS: ${{ vars.AKS_CLUSTER_NAME }}
+        run: |
+          power=$(az aks show --resource-group "$RG" --name "$AKS" \
+            --query powerState.code -o tsv)
+          if [ "$power" = "Stopped" ]; then
+            echo "Cluster éteint : démarrage (quelques minutes)..."
+            az aks start --resource-group "$RG" --name "$AKS"
+          fi
+
       - name: Configurer kubectl sur AKS
         run: |
           az aks get-credentials \
